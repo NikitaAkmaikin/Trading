@@ -3,7 +3,7 @@
 ## Установка
 ```bash
 # 1. Клонируйте проект
-git clone <ваш-репозиторий>
+git clone https://github.com/NikitaAkmaikin/Trading.git
 cd my-next-app
 
 # 2. Установите зависимости

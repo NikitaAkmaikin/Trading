@@ -1,48 +1,43 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Search, Filter, RefreshCw, Calendar, User, CreditCard, MapPin, Download, TrendingUp, TrendingDown } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Search, Filter, RefreshCw, Calendar, User, CreditCard, MapPin, Download, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { Order, OrderSchema } from '@/types';
+import { z } from 'zod';
 
 export default function AdminPanel() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedStatus, setSelectedStatus] = useState(null);
+  const [selectedStatus, setSelectedStatus] = useState<Order['status'] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState('date');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortField, setSortField] = useState<keyof Order>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const statusConfig = {
+  const statusConfig: Record<Order['status'], { label: string; color: string; textColor: string; bgLight: string }> = {
     PAID: { label: 'Оплачен', color: 'bg-green-500', textColor: 'text-green-700', bgLight: 'bg-green-50' },
     PENDING: { label: 'Ожидание', color: 'bg-yellow-500', textColor: 'text-yellow-700', bgLight: 'bg-yellow-50' },
     CANCELLED: { label: 'Отменен', color: 'bg-red-500', textColor: 'text-red-700', bgLight: 'bg-red-50' }
   };
 
-  useEffect(() => {
-    loadOrders();
-  }, [selectedStatus]);
-
-  const loadOrders = async () => {
-    setLoading(true);
-    try {
-      const url = selectedStatus 
+  // Data Fetching
+  const { data: orders = [], isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['orders', selectedStatus],
+    queryFn: async () => {
+      const url = selectedStatus
         ? `/api/admin/orders?status=${selectedStatus}`
         : '/api/admin/orders';
-      
-      const response = await fetch(url);
-      const result = await response.json();
-      
-      if (result.success) {
-        setOrders(result.data);
-      }
-    } catch (error) {
-      console.error('Error loading orders:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const formatDate = (dateString) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch orders');
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'API Error');
+
+      // Runtime validation
+      return z.array(OrderSchema).parse(json.data);
+    }
+  });
+
+  const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('ru-RU', {
       day: '2-digit',
@@ -53,53 +48,56 @@ export default function AdminPanel() {
     });
   };
 
-  // Фильтрация
-  const filteredOrders = orders.filter(order =>
-    order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.passenger.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.route.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Derived State: Filtering & Sorting
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order =>
+      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.passenger.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.route.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [orders, searchQuery]);
 
-  // Сортировка
-  const sortedOrders = [...filteredOrders].sort((a, b) => {
-    let comparison = 0;
-    
-    switch (sortField) {
-      case 'date':
-        comparison = new Date(a.date) - new Date(b.date);
-        break;
-      case 'amount':
-        comparison = a.amount - b.amount;
-        break;
-      case 'passenger':
-        comparison = a.passenger.localeCompare(b.passenger);
-        break;
-      case 'route':
-        comparison = a.route.localeCompare(b.route);
-        break;
-      default:
-        comparison = 0;
-    }
-    
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
+  const sortedOrders = useMemo(() => {
+    return [...filteredOrders].sort((a, b) => {
+      let comparison = 0;
 
-  // Пагинация
+      switch (sortField) {
+        case 'date':
+          comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+          break;
+        case 'amount':
+          comparison = a.amount - b.amount;
+          break;
+        case 'passenger':
+          comparison = a.passenger.localeCompare(b.passenger);
+          break;
+        case 'route':
+          comparison = a.route.localeCompare(b.route);
+          break;
+        default:
+          comparison = 0;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredOrders, sortField, sortOrder]);
+
+  // Pagination
   const totalPages = Math.ceil(sortedOrders.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedOrders = sortedOrders.slice(startIndex, startIndex + itemsPerPage);
 
-  // Статистика
-  const stats = {
+  // Stats
+  const stats = useMemo(() => ({
     total: orders.length,
     paid: orders.filter(o => o.status === 'PAID').length,
     pending: orders.filter(o => o.status === 'PENDING').length,
     cancelled: orders.filter(o => o.status === 'CANCELLED').length,
     totalAmount: orders.filter(o => o.status === 'PAID').reduce((sum, o) => sum + o.amount, 0),
     avgAmount: orders.length > 0 ? Math.round(orders.reduce((sum, o) => sum + o.amount, 0) / orders.length) : 0
-  };
+  }), [orders]);
 
-  const handleSort = (field) => {
+  const handleSort = (field: keyof Order) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -130,6 +128,27 @@ export default function AdminPanel() {
     link.click();
   };
 
+  if (isError) {
+    return (
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="bg-red-50 rounded-2xl p-12 text-center border border-red-100">
+          <AlertCircle className="mx-auto mb-4 text-red-500" size={64} />
+          <h3 className="text-xl font-bold text-red-800 mb-2">Ошибка загрузки заказов</h3>
+          <p className="text-red-600 mb-6">
+            {error instanceof Error ? error.message : 'Произошла неизвестная ошибка'}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors shadow-lg shadow-red-500/30"
+          >
+            <RefreshCw size={18} />
+            Попробовать снова
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* Header */}
@@ -142,17 +161,18 @@ export default function AdminPanel() {
           <div className="flex gap-3">
             <button
               onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+              disabled={isLoading || orders.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={18} />
               Экспорт CSV
             </button>
             <button
-              onClick={loadOrders}
-              disabled={loading}
+              onClick={() => refetch()}
+              disabled={isLoading}
               className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
             >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
               Обновить
             </button>
           </div>
@@ -162,27 +182,39 @@ export default function AdminPanel() {
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
             <div className="text-sm text-blue-600 mb-1">Всего заказов</div>
-            <div className="text-2xl font-bold text-blue-700">{stats.total}</div>
+            <div className="text-2xl font-bold text-blue-700">
+              {isLoading ? <div className="h-8 w-16 bg-blue-200 rounded animate-pulse"></div> : stats.total}
+            </div>
           </div>
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
             <div className="text-sm text-green-600 mb-1">Оплачено</div>
-            <div className="text-2xl font-bold text-green-700">{stats.paid}</div>
+            <div className="text-2xl font-bold text-green-700">
+              {isLoading ? <div className="h-8 w-16 bg-green-200 rounded animate-pulse"></div> : stats.paid}
+            </div>
           </div>
           <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 border border-yellow-200">
             <div className="text-sm text-yellow-600 mb-1">Ожидание</div>
-            <div className="text-2xl font-bold text-yellow-700">{stats.pending}</div>
+            <div className="text-2xl font-bold text-yellow-700">
+              {isLoading ? <div className="h-8 w-16 bg-yellow-200 rounded animate-pulse"></div> : stats.pending}
+            </div>
           </div>
           <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 border border-red-200">
             <div className="text-sm text-red-600 mb-1">Отменено</div>
-            <div className="text-2xl font-bold text-red-700">{stats.cancelled}</div>
+            <div className="text-2xl font-bold text-red-700">
+              {isLoading ? <div className="h-8 w-16 bg-red-200 rounded animate-pulse"></div> : stats.cancelled}
+            </div>
           </div>
           <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
             <div className="text-sm text-purple-600 mb-1">Сумма оплат</div>
-            <div className="text-xl font-bold text-purple-700">{stats.totalAmount.toLocaleString()} ₽</div>
+            <div className="text-xl font-bold text-purple-700">
+              {isLoading ? <div className="h-7 w-24 bg-purple-200 rounded animate-pulse"></div> : `${stats.totalAmount.toLocaleString()} ₽`}
+            </div>
           </div>
           <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-4 border border-indigo-200">
             <div className="text-sm text-indigo-600 mb-1">Средний чек</div>
-            <div className="text-xl font-bold text-indigo-700">{stats.avgAmount.toLocaleString()} ₽</div>
+            <div className="text-xl font-bold text-indigo-700">
+              {isLoading ? <div className="h-7 w-24 bg-indigo-200 rounded animate-pulse"></div> : `${stats.avgAmount.toLocaleString()} ₽`}
+            </div>
           </div>
         </div>
       </div>
@@ -212,11 +244,10 @@ export default function AdminPanel() {
                   setSelectedStatus(null);
                   setCurrentPage(1);
                 }}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                  selectedStatus === null
-                    ? 'bg-blue-500 text-white shadow-lg'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${selectedStatus === null
+                  ? 'bg-blue-500 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
               >
                 Все ({orders.length})
               </button>
@@ -224,14 +255,13 @@ export default function AdminPanel() {
                 <button
                   key={status}
                   onClick={() => {
-                    setSelectedStatus(status);
+                    setSelectedStatus(status as Order['status']);
                     setCurrentPage(1);
                   }}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                    selectedStatus === status
-                      ? `${config.color} text-white shadow-lg`
-                      : `${config.bgLight} ${config.textColor} hover:opacity-80`
-                  }`}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${selectedStatus === status
+                    ? `${config.color} text-white shadow-lg`
+                    : `${config.bgLight} ${config.textColor} hover:opacity-80`
+                    }`}
                 >
                   {config.label} ({orders.filter(o => o.status === status).length})
                 </button>
@@ -244,33 +274,29 @@ export default function AdminPanel() {
             <span className="text-sm text-gray-600 font-medium">Сортировка:</span>
             <button
               onClick={() => handleSort('date')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
-                sortField === 'date' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${sortField === 'date' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
             >
               Дата {sortField === 'date' && (sortOrder === 'asc' ? <TrendingUp size={14} /> : <TrendingDown size={14} />)}
             </button>
             <button
               onClick={() => handleSort('amount')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
-                sortField === 'amount' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${sortField === 'amount' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
             >
               Сумма {sortField === 'amount' && (sortOrder === 'asc' ? <TrendingUp size={14} /> : <TrendingDown size={14} />)}
             </button>
             <button
               onClick={() => handleSort('passenger')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
-                sortField === 'passenger' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${sortField === 'passenger' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
             >
               Пассажир {sortField === 'passenger' && (sortOrder === 'asc' ? <TrendingUp size={14} /> : <TrendingDown size={14} />)}
             </button>
             <button
               onClick={() => handleSort('route')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
-                sortField === 'route' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${sortField === 'route' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
             >
               Маршрут {sortField === 'route' && (sortOrder === 'asc' ? <TrendingUp size={14} /> : <TrendingDown size={14} />)}
             </button>
@@ -286,9 +312,10 @@ export default function AdminPanel() {
 
       {/* Orders Table */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-64 space-y-4">
             <RefreshCw className="animate-spin text-blue-500" size={32} />
+            <p className="text-gray-500 font-medium">Загрузка заказов...</p>
           </div>
         ) : paginatedOrders.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
@@ -369,17 +396,16 @@ export default function AdminPanel() {
                     >
                       Назад
                     </button>
-                    
+
                     <div className="flex gap-1">
                       {[...Array(totalPages)].map((_, i) => (
                         <button
                           key={i + 1}
                           onClick={() => setCurrentPage(i + 1)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            currentPage === i + 1
-                              ? 'bg-blue-500 text-white'
-                              : 'text-gray-700 hover:bg-gray-100'
-                          }`}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${currentPage === i + 1
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-700 hover:bg-gray-100'
+                            }`}
                         >
                           {i + 1}
                         </button>

@@ -1,65 +1,75 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Train, Plane, Bus, Filter as FilterIcon, MapPin, Bed, Clock, Ticket, TrendingDown, ArrowRight } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Train, Plane, Bus, Filter as FilterIcon, MapPin, Bed, Clock, Ticket as TicketIcon, TrendingDown, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { Ticket, TicketsDataSchema } from '@/types';
 
 export default function Filters() {
-  const [activeTransport, setActiveTransport] = useState('train');
+  const [activeTransport, setActiveTransport] = useState<Ticket['transportType']>('train');
   const [selectedDate, setSelectedDate] = useState('22');
-  const [activeFilters, setActiveFilters] = useState({
+  const [activeFilters, setActiveFilters] = useState<{
+    hasSeats: boolean;
+    lowerSeats: boolean;
+    vagonType: string | null;
+  }>({
     hasSeats: false,
     lowerSeats: false,
     vagonType: null
   });
-  const [ticketsData, setTicketsData] = useState(null);
-  const [filteredTickets, setFilteredTickets] = useState([]);
   const [sortBy, setSortBy] = useState('price');
-  const [loading, setLoading] = useState(true);
 
-  // Загрузка данных из API
-  useEffect(() => {
-    setLoading(true);
-    fetch('/api/tickets')
-      .then(res => res.json())
-      .then(result => {
-        if (result.success) {
-          setTicketsData(result.data);
-          filterTickets(result.data, activeTransport, selectedDate, activeFilters);
-        }
-      })
-      .catch(err => console.error('Error loading tickets:', err))
-      .finally(() => setLoading(false));
-  }, []);
+  const transportTypes: { id: Ticket['transportType']; label: string; icon: React.ElementType }[] = [
+    { id: 'train', label: 'Ж/Д', icon: Train },
+    { id: 'plane', label: 'Авиа', icon: Plane },
+    { id: 'bus', label: 'Автобусы', icon: Bus }
+  ];
 
-  // Применение фильтров
-  useEffect(() => {
-    if (ticketsData) {
-      filterTickets(ticketsData, activeTransport, selectedDate, activeFilters);
+  const vagonTypes: Record<Ticket['transportType'], string[]> = {
+    train: ['Плацкарт', 'Купе', 'СВ'],
+    plane: ['Эконом', 'Бизнес'],
+    bus: ['Стандарт', 'Комфорт']
+  };
+
+  // Data Fetching with React Query and Zod Validation
+  const { data: ticketsData, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['tickets'],
+    queryFn: async () => {
+      const res = await fetch('/api/tickets');
+      if (!res.ok) throw new Error('Failed to fetch tickets');
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'API Error');
+
+      // Runtime validation
+      return TicketsDataSchema.parse(json.data);
     }
-  }, [activeTransport, selectedDate, activeFilters, sortBy, ticketsData]);
+  });
 
-  const filterTickets = (data, transport, date, filters) => {
-    let tickets = data.routes.filter(ticket => {
-      // Фильтр по транспорту
-      if (ticket.transportType !== transport) return false;
+  // Derived State (Filtering & Sorting)
+  const filteredTickets = useMemo(() => {
+    if (!ticketsData) return [];
 
-      // Фильтр по дате
-      const calendarDate = data.priceCalendar.find(d => d.date === date);
+    const tickets = ticketsData.routes.filter(ticket => {
+      // Transport Filter
+      if (ticket.transportType !== activeTransport) return false;
+
+      // Date Filter
+      const calendarDate = ticketsData.priceCalendar.find(d => d.date === selectedDate);
       if (calendarDate && ticket.date !== calendarDate.fullDate) return false;
 
-      // Фильтр "Есть места"
-      if (filters.hasSeats && ticket.seatsAvailable === 0) return false;
+      // "Has Seats" Filter
+      if (activeFilters.hasSeats && ticket.seatsAvailable === 0) return false;
 
-      // Фильтр "Нижние места"
-      if (filters.lowerSeats && ticket.lowerSeats === 0) return false;
+      // "Lower Seats" Filter
+      if (activeFilters.lowerSeats && ticket.lowerSeats === 0) return false;
 
-      // Фильтр "Тип вагона"
-      if (filters.vagonType && ticket.vagonType !== filters.vagonType) return false;
+      // "Vagon Type" Filter
+      if (activeFilters.vagonType && ticket.vagonType !== activeFilters.vagonType) return false;
 
       return true;
     });
 
-    // Сортировка
-    tickets.sort((a, b) => {
+    // Sorting
+    return tickets.sort((a, b) => {
       switch (sortBy) {
         case 'price':
           return a.price - b.price;
@@ -71,30 +81,16 @@ export default function Filters() {
           return 0;
       }
     });
+  }, [ticketsData, activeTransport, selectedDate, activeFilters, sortBy]);
 
-    setFilteredTickets(tickets);
-  };
-
-  const transportTypes = [
-    { id: 'train', label: 'Ж/Д', icon: Train },
-    { id: 'plane', label: 'Авиа', icon: Plane },
-    { id: 'bus', label: 'Автобусы', icon: Bus }
-  ];
-
-  const vagonTypes = {
-    train: ['Плацкарт', 'Купе', 'СВ'],
-    plane: ['Эконом', 'Бизнес'],
-    bus: ['Стандарт', 'Комфорт']
-  };
-
-  const toggleFilter = (filterId) => {
+  const toggleFilter = (filterId: keyof typeof activeFilters) => {
     setActiveFilters(prev => ({
       ...prev,
       [filterId]: !prev[filterId]
     }));
   };
 
-  const selectVagonType = (type) => {
+  const selectVagonType = (type: string) => {
     setActiveFilters(prev => ({
       ...prev,
       vagonType: prev.vagonType === type ? null : type
@@ -107,34 +103,43 @@ export default function Filters() {
     return date?.price;
   };
 
-  const formatPrice = (price) => {
+  const formatPrice = (price: number | undefined | null) => {
+    if (price === undefined || price === null) return '0';
     return new Intl.NumberFormat('ru-RU').format(price);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 space-y-4">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500"></div>
-        <p className="text-gray-600 font-medium">Загрузка билетов...</p>
+      <div className="flex flex-col items-center justify-center h-96 space-y-6 animate-pulse">
+        <div className="h-16 w-16 bg-gray-200 rounded-full"></div>
+        <div className="space-y-3 text-center">
+          <div className="h-4 w-48 bg-gray-200 rounded mx-auto"></div>
+          <div className="h-3 w-32 bg-gray-200 rounded mx-auto"></div>
+        </div>
       </div>
     );
   }
 
-  if (!ticketsData) {
+  if (isError) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-        <div className="text-6xl mb-4">😕</div>
-        <h3 className="text-xl font-bold text-gray-800 mb-2">Ошибка загрузки данных</h3>
-        <p className="text-gray-600 mb-6">Не удалось загрузить билеты. Попробуйте обновить страницу.</p>
+      <div className="bg-red-50 rounded-2xl p-12 text-center border border-red-100 max-w-2xl mx-auto mt-10">
+        <AlertCircle className="mx-auto mb-4 text-red-500" size={64} />
+        <h3 className="text-xl font-bold text-red-800 mb-2">Ошибка загрузки данных</h3>
+        <p className="text-red-600 mb-6">
+          {error instanceof Error ? error.message : 'Произошла неизвестная ошибка'}
+        </p>
         <button
-          onClick={() => window.location.reload()}
-          className="px-6 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors"
+          onClick={() => refetch()}
+          className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors shadow-lg shadow-red-500/30"
         >
-          Обновить страницу
+          <RefreshCw size={18} />
+          Попробовать снова
         </button>
       </div>
     );
   }
+
+  if (!ticketsData) return null;
 
   return (
     <div className="w-full max-w-7xl mx-auto p-6 space-y-6">
@@ -275,7 +280,7 @@ export default function Filters() {
               </span>
             )}
           </div>
-          
+
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">Сортировка:</span>
             <select
@@ -295,7 +300,7 @@ export default function Filters() {
       <div className="space-y-4">
         {filteredTickets.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <Ticket size={64} className="mx-auto mb-4 text-gray-300" />
+            <TicketIcon size={64} className="mx-auto mb-4 text-gray-300" />
             <h3 className="text-xl font-bold text-gray-800 mb-2">Билеты не найдены</h3>
             <p className="text-gray-600">Попробуйте изменить параметры поиска или выбрать другую дату</p>
             <button

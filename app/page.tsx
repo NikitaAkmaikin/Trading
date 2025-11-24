@@ -120,7 +120,7 @@ export default function Home() {
     }
   };
 
-  const handleOpenEndpoint = (path) => {
+  const handleOpenEndpoint = (path: string) => {
     if (path.startsWith('/api') || path.startsWith('/data')) {
       window.open(path, '_blank');
     }
@@ -143,14 +143,14 @@ export default function Home() {
               <Sparkles className="text-purple-600" size={20} />
               <span className="text-sm font-semibold text-gray-700">Современная система бронирования</span>
             </div>
-            
+
             <h1 className="text-6xl md:text-7xl font-black text-gray-900 mb-6 leading-tight">
               Путешествуй
               <span className="block bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent">
                 с комфортом
               </span>
             </h1>
-            
+
             <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
               Инновационная платформа для бронирования транспорта с умными фильтрами и мгновенным поиском
             </p>
@@ -175,16 +175,16 @@ export default function Home() {
             <Link href="/filters">
               <div className="group relative bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 rounded-3xl p-8 cursor-pointer transform transition-all duration-500 hover:scale-105 hover:shadow-2xl overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-1000"></div>
-                
+
                 <div className="relative text-white">
                   <div className="bg-white/20 backdrop-blur-sm w-20 h-20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                     <span className="text-5xl">🎫</span>
                   </div>
-                  
+
                   <h2 className="text-3xl font-black mb-4 group-hover:translate-x-2 transition-transform duration-300">
                     Фильтры поиска
                   </h2>
-                  
+
                   <p className="text-blue-100 mb-6 leading-relaxed">
                     Умная система фильтрации с выбором транспорта, календарем цен и быстрыми настройками для идеального путешествия
                   </p>
@@ -194,7 +194,7 @@ export default function Home() {
                     <p className="text-sm text-white/90">✓ Фильтры по транспорту и классу</p>
                     <p className="text-sm text-white/90">✓ Календарь с минимальными ценами</p>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 text-white font-bold group-hover:gap-5 transition-all duration-300">
                     <span>Открыть интерфейс</span>
                     <ArrowRight className="group-hover:translate-x-2 transition-transform duration-300" size={20} />
@@ -210,16 +210,16 @@ export default function Home() {
             <Link href="/admin">
               <div className="group relative bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-3xl p-8 cursor-pointer transform transition-all duration-500 hover:scale-105 hover:shadow-2xl overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-1000"></div>
-                
+
                 <div className="relative text-white">
                   <div className="bg-white/20 backdrop-blur-sm w-20 h-20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                     <span className="text-5xl">📊</span>
                   </div>
-                  
+
                   <h2 className="text-3xl font-black mb-4 group-hover:translate-x-2 transition-transform duration-300">
                     Админ-панель
                   </h2>
-                  
+
                   <p className="text-purple-100 mb-6 leading-relaxed">
                     Профессиональный реестр заказов с расширенной аналитикой, фильтрацией по статусам и детальной статистикой
                   </p>
@@ -229,7 +229,7 @@ export default function Home() {
                     <p className="text-sm text-white/90">✓ Фильтры и сортировка</p>
                     <p className="text-sm text-white/90">✓ Экспорт в CSV</p>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 text-white font-bold group-hover:gap-5 transition-all duration-300">
                     <span>Перейти в панель</span>
                     <ArrowRight className="group-hover:translate-x-2 transition-transform duration-300" size={20} />
@@ -277,10 +277,10 @@ export default function Home() {
                 <p className="text-xs text-pink-600">Записей</p>
               </div>
             </div>
-            
+
             <div className="space-y-3">
               {apiEndpoints.map((endpoint, index) => {
-                const colors = colorClasses[endpoint.color];
+                const colors = colorClasses[endpoint.color as keyof typeof colorClasses];
                 return (
                   <div
                     key={index}
@@ -321,9 +321,9 @@ export default function Home() {
 
             {/* API Example */}
             <div className="mt-6 bg-gray-900 rounded-xl p-6 overflow-x-auto">
-              <p className="text-green-400 text-sm font-mono mb-3">// Пример использования API</p>
+              <p className="text-green-400 text-sm font-mono mb-3">{'// Пример использования API'}</p>
               <code className="text-gray-300 text-sm font-mono block whitespace-pre">
-{`fetch('/api/admin/orders?status=PAID')
+                {`fetch('/api/admin/orders?status=PAID')
   .then(res => res.json())
   .then(data => {
     console.log('Успех:', data);

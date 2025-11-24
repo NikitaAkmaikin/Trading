@@ -5,11 +5,15 @@ export const metadata = {
   description: 'Система бронирования транспорта',
 }
 
-export default function RootLayout({ children }) {
+import Providers from './providers';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">
       <body className="antialiased">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   )
